@@ -1,7 +1,6 @@
 package types
 
 import (
-	"fmt"
 	"io"
 	"math/big"
 	"sync/atomic"
@@ -11,41 +10,66 @@ import (
 	"github.com/universe-30/mt-trie/rlp"
 )
 
+type BlockNonce uint64
+
+type Header struct {
+	ParentHash common.Hash    `json:"parentHash"`
+	Coinbase   common.Address `json:"miner"`
+	Root       common.Hash    `json:"stateRoot"`
+	TxHash     common.Hash    `json:"transactionsRoot"`
+
+	GasLimit uint64     `json:"gasLimit"`
+	Number   uint64     `json:"number"`
+	Time     uint64     `json:"timestamp"`
+	Nonce    BlockNonce `json:"nonce"`
+
+	BaseFee *big.Int `json:"baseFeePerGas" rlp:"optional"`
+}
+
 type Block struct {
-	Number *big.Int
-	Time   uint64
+	header *Header
+
 	// PrevBlockHash
-	ParentHash common.Hash
-	// Data
-	txs []*Transaction
+	Txs []*Transaction
 
 	// caches
 	hash atomic.Value
 }
 
-func (b *Block) String() {
-	fmt.Printf("Number: %d \n", b.Number)
-	fmt.Printf("ParentHash: %s \n", b.ParentHash)
-	fmt.Printf("CurrHash: %s \n", b.Hash())
-	// fmt.Printf("Data: %s \n", block.Data)
-	fmt.Printf("Timestamp: %d \n", b.Time)
-	fmt.Println()
+func (b *Block) Transactions() []*Transaction { return b.Txs }
+
+func (b *Block) NumberU64() uint64       { return b.header.Number }
+func (b *Block) GasLimit() uint64        { return b.header.GasLimit }
+func (b *Block) ParentHash() common.Hash { return b.header.ParentHash }
+
+func (b *Block) Header() *Header { return b.header }
+
+func (b *Block) SetFinal(txhash common.Hash, nonce BlockNonce) {
+	b.header.TxHash = txhash
+	b.header.Nonce = nonce
 }
 
 // 生成新的区块
-func CreateNewBlock(prev Block, txs []*Transaction) *Block {
-	newBlock := Block{}
-	newBlock.Number = new(big.Int).Add(prev.Number, big.NewInt(1))
-	newBlock.Time = uint64(time.Now().Unix())
-	newBlock.ParentHash = prev.Hash()
-	newBlock.txs = txs
+func CreateNewBlock(prev *Block, txs []*Transaction) *Block {
 
-	return &newBlock
+	header := &Header{}
+	header.Number = prev.NumberU64() + 1
+	header.Time = uint64(time.Now().Unix())
+	header.ParentHash = prev.Hash()
+
+	blk := &Block{header: header}
+	blk.Txs = txs
+
+	return blk
+}
+
+func NewBlockWithHeader(header *Header) *Block {
+	return &Block{header: header}
 }
 
 // "external" block encoding. used for eth protocol, etc.
 type extblock struct {
-	Number *big.Int
+	Number uint64
 	Time   uint64
 	Txs    []*Transaction
 }
@@ -76,7 +100,7 @@ func calculateHash(block *Block) common.Hash {
 	// return hex.EncodeToString(bytes[:])
 }
 
-// DecodeRLP decodes the Ethereum
+// DecodeRLP decodes
 func (b *Block) DecodeRLP(s *rlp.Stream) error {
 	var eb Block
 	if err := s.Decode(&eb); err != nil {
@@ -86,23 +110,19 @@ func (b *Block) DecodeRLP(s *rlp.Stream) error {
 	return nil
 }
 
-// EncodeRLP serializes b into the Ethereum RLP block format.
+// EncodeRLP serializes b into the RLP block format.
 func (obj *Block) EncodeRLP(_w io.Writer) error {
 	w := rlp.NewEncoderBuffer(_w)
 	_tmp0 := w.List()
-	w.WriteBytes(obj.ParentHash[:])
-	if obj.Number == nil {
-		w.Write(rlp.EmptyString)
-	} else {
-		if obj.Number.Sign() == -1 {
-			return rlp.ErrNegativeBigInt
-		}
-		w.WriteBigInt(obj.Number)
+	w.WriteBytes(obj.header.ParentHash[:])
+	if obj.header.Number < 0 {
+		return rlp.ErrNegativeBigInt
 	}
+	w.WriteUint64(obj.header.Number)
 
-	w.WriteUint64(obj.Time)
+	w.WriteUint64(obj.header.Time)
 
-	rlp.Encode(w, obj.txs)
+	rlp.Encode(w, obj.Txs)
 
 	w.ListEnd(_tmp0)
 

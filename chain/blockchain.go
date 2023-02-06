@@ -1,22 +1,30 @@
 package chain
 
 import (
-	"fmt"
+	"sync/atomic"
 
 	"github.com/universe-30/mt-bc/chain/types"
+	"github.com/universe-30/mt-trie/accdb"
 )
 
 type BlockChain struct {
-	Blocks []*types.Block
+	db accdb.Database // Low level persistent database to store final content in
+
+	currentBlock atomic.Value // Current head of the block chain
+
+	processor Processor // Block transaction processor interface
+
 }
 
-func (bc *BlockChain) String() {
-	for _, block := range bc.Blocks {
-		fmt.Printf("Number: %d \n", block.Number)
-		fmt.Printf("ParentHash: %s \n", block.ParentHash)
-		fmt.Printf("CurrHash: %s \n", block.Hash())
-		// fmt.Printf("Data: %s \n", block.Data)
-		fmt.Printf("Timestamp: %d \n", block.Time)
-		fmt.Println()
-	}
+func NewBlockChain() (*BlockChain, error) {
+
+	bc := &BlockChain{}
+
+	bc.processor = NewStateProcessor(bc)
+
+	return bc, nil
+}
+
+func (bc *BlockChain) CurrentBlock() *types.Block {
+	return bc.currentBlock.Load().(*types.Block)
 }

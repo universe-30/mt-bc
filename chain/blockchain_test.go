@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/universe-30/mt-bc/chain/types"
+	"github.com/universe-30/mt-bc/consensus/ethash.go"
 )
 
 func TestSetBlockData(t *testing.T) {
@@ -14,9 +15,7 @@ func TestSetBlockData(t *testing.T) {
 
 	bc := CreateNewBlockChain(genesisBlock)
 
-	l := len(bc.Blocks)
-	preBlock := bc.Blocks[l-1]
-	currentBlock := CreateNewBlock(preBlock)
+	currentBlock := CreateNewBlock(genesisBlock)
 
 	bc.InsertBlock(currentBlock)
 
@@ -31,17 +30,13 @@ func TestBlockDataEqual(t *testing.T) {
 	genesisBlock := CreateGenesisBlock()
 
 	bc := CreateNewBlockChain(genesisBlock)
-	l := len(bc.Blocks)
-	preBlock := bc.Blocks[l-1]
-	currentBlock := CreateNewBlock(preBlock)
+	currentBlock := CreateNewBlock(genesisBlock)
 	bc.InsertBlock(currentBlock)
 
 	genesisBlock2 := CreateGenesisBlock()
 
 	bc2 := CreateNewBlockChain(genesisBlock2)
-	l2 := len(bc2.Blocks)
-	preBlock2 := bc.Blocks[l2-1]
-	currentBlock2 := CreateNewBlock(preBlock2)
+	currentBlock2 := CreateNewBlock(genesisBlock2)
 	bc2.InsertBlock(currentBlock2)
 
 	if currentBlock.Hash() != currentBlock2.Hash() {
@@ -57,14 +52,25 @@ func TestBlockDataEqual(t *testing.T) {
 
 // 生成区块链
 func CreateNewBlockChain(genesisBlock *types.Block) *BlockChain {
-	blockChain := BlockChain{}
+	blockChain, _ := NewBlockChain()
 	blockChain.InsertBlock(genesisBlock)
-	return &blockChain
+	return blockChain
 }
 
 func CreateNewBlock(prevBlock *types.Block) *types.Block {
 	data := types.NewTxWithString("aabc")
 	txs := []*types.Transaction{data}
 
-	return types.CreateNewBlock(*prevBlock, txs)
+	block := types.CreateNewBlock(prevBlock, txs)
+
+	pow := ethash.NewProofOfWork()
+	hash, nonce, err := pow.Seal(block)
+	if err != nil {
+		log.Panic(err)
+		return nil
+	}
+
+	block.SetFinal(hash, nonce)
+
+	return block
 }
